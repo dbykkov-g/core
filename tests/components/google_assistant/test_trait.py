@@ -1089,6 +1089,38 @@ async def test_temperature_setting_climate_setpoint_auto(hass):
     assert calls[0].data == {ATTR_ENTITY_ID: "climate.bla", ATTR_TEMPERATURE: 19}
 
 
+async def test_temperature_setting_sensor(hass):
+    """Test TemperatureSetting trait support for sensor domain."""
+    hass.config.units.temperature_unit = TEMP_CELSIUS
+
+    trt = trait.TemperatureSettingTrait(
+        hass,
+        State(
+            "sensor.test",
+            18.0,
+            {
+                "device_class": sensor.SensorDeviceClass.TEMPERATURE,
+            },
+        ),
+        BASIC_CONFIG,
+    )
+    assert trt.sync_attributes() == {
+        "availableThermostatModes": ["sensor"],
+        "thermostatTemperatureUnit": "C",
+    }
+    assert trt.query_attributes() == {
+        "thermostatMode": "sensor",
+        "thermostatTemperatureAmbient": 18.0,
+    }
+    assert not trt.can_execute(trait.COMMAND_THERMOSTAT_TEMPERATURE_SETPOINT, {})
+    assert not trt.can_execute(trait.COMMAND_THERMOSTAT_TEMPERATURE_SET_RANGE, {})
+    assert not trt.can_execute(trait.COMMAND_THERMOSTAT_SET_MODE, {})
+
+    with pytest.raises(helpers.SmartHomeError) as err:
+        await trt.execute(trait.COMMAND_ONOFF, BASIC_DATA, {"on": False}, {})
+    assert err.value.code == const.ERR_NOT_SUPPORTED
+
+
 async def test_temperature_control(hass):
     """Test TemperatureControl trait support for sensor domain."""
     hass.config.units.temperature_unit = TEMP_CELSIUS
@@ -3195,6 +3227,8 @@ async def test_sensorstate(hass):
             "VolatileOrganicCompounds",
             "PARTS_PER_MILLION",
         ),
+        sensor.SensorDeviceClass.ILLUMINANCE: ("LightLevel", "LUX"),
+        sensor.SensorDeviceClass.PRESSURE: ("Pressure", "KILOPASCALS"),
     }
 
     for sensor_type in sensor_types:
@@ -3234,3 +3268,43 @@ async def test_sensorstate(hass):
         )
         is False
     )
+
+
+async def test_motion_detection_sensor(hass):
+    """Test HumiditySetting trait support for humidity sensor."""
+    trt = trait.OccupancySensingTrait(
+        hass,
+        State(
+            "sensor.test",
+            True,
+            {ATTR_DEVICE_CLASS: binary_sensor.BinarySensorDeviceClass.MOTION},
+        ),
+        BASIC_CONFIG,
+    )
+
+    assert trt.sync_attributes() == {"supportsMotionDetectionEventInProgress": True}
+    assert trt.query_attributes() == {"motionDetectionEventInProgress": True}
+
+    with pytest.raises(helpers.SmartHomeError) as err:
+        await trt.execute(trait.COMMAND_ONOFF, BASIC_DATA, {"on": False}, {})
+    assert err.value.code == const.ERR_NOT_SUPPORTED
+
+
+async def test_occupancy_sensing_sensor(hass):
+    """Test HumiditySetting trait support for humidity sensor."""
+    trt = trait.MotionDetectionTrait(
+        hass,
+        State(
+            "sensor.test",
+            True,
+            {ATTR_DEVICE_CLASS: binary_sensor.BinarySensorDeviceClass.MOTION},
+        ),
+        BASIC_CONFIG,
+    )
+
+    assert trt.sync_attributes() == {}
+    assert trt.query_attributes() == {"occupancy": True}
+
+    with pytest.raises(helpers.SmartHomeError) as err:
+        await trt.execute(trait.COMMAND_ONOFF, BASIC_DATA, {"on": False}, {})
+    assert err.value.code == const.ERR_NOT_SUPPORTED

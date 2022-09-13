@@ -117,6 +117,8 @@ TRAIT_CHANNEL = f"{PREFIX_TRAITS}Channel"
 TRAIT_LOCATOR = f"{PREFIX_TRAITS}Locator"
 TRAIT_ENERGYSTORAGE = f"{PREFIX_TRAITS}EnergyStorage"
 TRAIT_SENSOR_STATE = f"{PREFIX_TRAITS}SensorState"
+TRAIT_MOTIONDETECTION = f"{PREFIX_TRAITS}MotionDetection"
+TRAIT_OCCUPANCYSENSING = f"{PREFIX_TRAITS}OccupancySensing"
 
 PREFIX_COMMANDS = "action.devices.commands."
 COMMAND_ONOFF = f"{PREFIX_COMMANDS}OnOff"
@@ -888,7 +890,10 @@ class TemperatureSettingTrait(_Trait):
     @staticmethod
     def supported(domain, features, device_class, _):
         """Test if state is supported."""
-        return domain == climate.DOMAIN
+        return domain == climate.DOMAIN or (
+            domain == sensor.DOMAIN
+            and device_class == sensor.SensorDeviceClass.TEMPERATURE
+        )
 
     @property
     def climate_google_modes(self):
@@ -905,6 +910,9 @@ class TemperatureSettingTrait(_Trait):
             google_mode = self.preset_to_google.get(preset)
             if google_mode and google_mode not in modes:
                 modes.append(google_mode)
+
+        if self.state.domain == sensor.DOMAIN:
+            modes.append("sensor")
 
         return modes
 
@@ -928,6 +936,7 @@ class TemperatureSettingTrait(_Trait):
             mode in modes for mode in ("heatcool", "heat", "cool")
         ):
             modes.append("on")
+
         response["availableThermostatModes"] = modes
 
         return response
@@ -944,6 +953,8 @@ class TemperatureSettingTrait(_Trait):
 
         if preset in self.preset_to_google:
             response["thermostatMode"] = self.preset_to_google[preset]
+        elif self.state.domain == sensor.DOMAIN:
+            response["thermostatMode"] = "sensor"
         else:
             response["thermostatMode"] = self.hvac_to_google.get(operation, "none")
 
@@ -988,6 +999,11 @@ class TemperatureSettingTrait(_Trait):
 
     async def execute(self, command, data, params, challenge):
         """Execute a temperature point or mode command."""
+        if self.state.domain == sensor.DOMAIN:
+            raise SmartHomeError(
+                ERR_NOT_SUPPORTED, "Execute is not supported by sensor"
+            )
+
         # All sent in temperatures are always in Celsius
         unit = self.hass.config.units.temperature_unit
         min_temp = self.state.attributes[climate.ATTR_MIN_TEMP]
@@ -1142,6 +1158,9 @@ class HumiditySettingTrait(_Trait):
             device_class = attrs.get(ATTR_DEVICE_CLASS)
             if device_class == sensor.SensorDeviceClass.HUMIDITY:
                 response["queryOnlyHumiditySetting"] = True
+                response["humidityAmbientPercent"] = self.state.attributes[
+                    humidifier.ATTR_HUMIDITY
+                ]
 
         elif domain == humidifier.DOMAIN:
             response["humiditySetpointRange"] = {
@@ -2371,6 +2390,9 @@ class SensorStateTrait(_Trait):
             "VolatileOrganicCompounds",
             "PARTS_PER_MILLION",
         ),
+        sensor.SensorDeviceClass.ILLUMINANCE: ("LightLevel", "LUX"),
+        sensor.SensorDeviceClass.PRESSURE: ("Pressure", "KILOPASCALS")
+        # Flow is missing
     }
 
     name = TRAIT_SENSOR_STATE
@@ -2401,3 +2423,57 @@ class SensorStateTrait(_Trait):
                     {"name": data[0], "rawValue": self.state.state}
                 ]
             }
+
+
+@register_trait
+class MotionDetectionTrait(_Trait):
+    """Trait to offer motion detection functionality.
+
+    https://developers.google.com/actions/smarthome/traits/motiondetection
+    """
+
+    name = TRAIT_MOTIONDETECTION
+    commands: list[str] = []
+
+    @staticmethod
+    def supported(domain, features, device_class, _):
+        """Test if state is supported."""
+        return (
+            domain == binary_sensor.DOMAIN
+            and device_class == binary_sensor.BinarySensorDeviceClass.MOTION
+        )
+
+    def sync_attributes(self):
+        """Return OnOff attributes for a sync request."""
+        return {"supportsMotionDetectionEventInProgress": True}
+
+    def query_attributes(self):
+        """Return MotionDetection query attributes."""
+        return {"motionDetectionEventInProgress": self.state.state == STATE_ON}
+
+
+@register_trait
+class OccupancySensingTrait(_Trait):
+    """Trait to offer occupancy sensing functionality.
+
+    https://developers.google.com/actions/smarthome/traits/occupancysensing
+    """
+
+    name = TRAIT_OCCUPANCYSENSING
+    commands: list[str] = []
+
+    @staticmethod
+    def supported(domain, features, device_class, _):
+        """Test if state is supported."""
+        return (
+            domain == binary_sensor.DOMAIN
+            and device_class == binary_sensor.BinarySensorDeviceClass.OCCUPANCY
+        )
+
+    def sync_attributes(self):
+        """Return OccupancySensing attributes for a sync request."""
+        return {}
+
+    def query_attributes(self):
+        """Return OccupancySensing query attributes."""
+        return {"occupancy": self.state.state == STATE_ON}
