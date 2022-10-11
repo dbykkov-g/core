@@ -3271,8 +3271,8 @@ async def test_sensorstate(hass):
 
 
 async def test_motion_detection_sensor(hass):
-    """Test HumiditySetting trait support for humidity sensor."""
-    trt = trait.OccupancySensingTrait(
+    """Test MotionDetection trait support."""
+    trt = trait.MotionDetectionTrait(
         hass,
         State(
             "sensor.test",
@@ -3292,7 +3292,7 @@ async def test_motion_detection_sensor(hass):
 
 async def test_occupancy_sensing_sensor(hass):
     """Test HumiditySetting trait support for humidity sensor."""
-    trt = trait.MotionDetectionTrait(
+    trt = trait.OccupancySensingTrait(
         hass,
         State(
             "sensor.test",
