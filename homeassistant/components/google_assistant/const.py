@@ -171,6 +171,8 @@ DEVICE_CLASS_TO_GOOGLE_TYPES = {
     (media_player.DOMAIN, media_player.MediaPlayerDeviceClass.TV): TYPE_TV,
     (sensor.DOMAIN, sensor.SensorDeviceClass.HUMIDITY): TYPE_SENSOR,
     (sensor.DOMAIN, sensor.SensorDeviceClass.TEMPERATURE): TYPE_SENSOR,
+    (sensor.DOMAIN, sensor.SensorDeviceClass.ILLUMINANCE): TYPE_SENSOR,
+    (sensor.DOMAIN, sensor.SensorDeviceClass.PRESSURE): TYPE_SENSOR,
     (switch.DOMAIN, switch.SwitchDeviceClass.OUTLET): TYPE_OUTLET,
     (switch.DOMAIN, switch.SwitchDeviceClass.SWITCH): TYPE_SWITCH,
 }

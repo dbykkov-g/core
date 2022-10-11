@@ -812,53 +812,6 @@ class StartStopTrait(_Trait):
 
 
 @register_trait
-class TemperatureControlTrait(_Trait):
-    """Trait for devices (other than thermostats) that support controlling temperature. Workaround for Temperature sensors.
-
-    https://developers.google.com/assistant/smarthome/traits/temperaturecontrol
-    """
-
-    name = TRAIT_TEMPERATURE_CONTROL
-
-    @staticmethod
-    def supported(domain, features, device_class, _):
-        """Test if state is supported."""
-        return (
-            domain == sensor.DOMAIN
-            and device_class == sensor.SensorDeviceClass.TEMPERATURE
-        )
-
-    def sync_attributes(self):
-        """Return temperature attributes for a sync request."""
-        return {
-            "temperatureUnitForUX": _google_temp_unit(
-                self.hass.config.units.temperature_unit
-            ),
-            "queryOnlyTemperatureSetting": True,
-            "temperatureRange": {
-                "minThresholdCelsius": -100,
-                "maxThresholdCelsius": 100,
-            },
-        }
-
-    def query_attributes(self):
-        """Return temperature states."""
-        response = {}
-        unit = self.hass.config.units.temperature_unit
-        current_temp = self.state.state
-        if current_temp not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-            temp = round(temp_util.convert(float(current_temp), unit, TEMP_CELSIUS), 1)
-            response["temperatureSetpointCelsius"] = temp
-            response["temperatureAmbientCelsius"] = temp
-
-        return response
-
-    async def execute(self, command, data, params, challenge):
-        """Unsupported."""
-        raise SmartHomeError(ERR_NOT_SUPPORTED, "Execute is not supported by sensor")
-
-
-@register_trait
 class TemperatureSettingTrait(_Trait):
     """Trait to offer handling both temperature point and modes functionality.
 
@@ -901,20 +854,30 @@ class TemperatureSettingTrait(_Trait):
         modes = []
         attrs = self.state.attributes
 
-        for mode in attrs.get(climate.ATTR_HVAC_MODES, []):
-            google_mode = self.hvac_to_google.get(mode)
-            if google_mode and google_mode not in modes:
-                modes.append(google_mode)
-
-        for preset in attrs.get(climate.ATTR_PRESET_MODES, []):
-            google_mode = self.preset_to_google.get(preset)
-            if google_mode and google_mode not in modes:
-                modes.append(google_mode)
-
         if self.state.domain == sensor.DOMAIN:
             modes.append("sensor")
+        else:
+            for mode in attrs.get(climate.ATTR_HVAC_MODES, []):
+                google_mode = self.hvac_to_google.get(mode)
+                if google_mode and google_mode not in modes:
+                    modes.append(google_mode)
+
+            for preset in attrs.get(climate.ATTR_PRESET_MODES, []):
+                google_mode = self.preset_to_google.get(preset)
+                if google_mode and google_mode not in modes:
+                    modes.append(google_mode)
 
         return modes
+
+    @property
+    def ambient_temperature(self):
+        """Return the current known ambient temperature."""
+        if self.state.domain == sensor.DOMAIN:
+            current_temp = self.state.state
+            if current_temp not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                return current_temp
+            return None
+        return self.state.attributes.get(climate.ATTR_CURRENT_TEMPERATURE)
 
     def sync_attributes(self):
         """Return temperature point and modes attributes for a sync request."""
@@ -958,7 +921,7 @@ class TemperatureSettingTrait(_Trait):
         else:
             response["thermostatMode"] = self.hvac_to_google.get(operation, "none")
 
-        current_temp = attrs.get(climate.ATTR_CURRENT_TEMPERATURE)
+        current_temp = self.ambient_temperature
         if current_temp is not None:
             response["thermostatTemperatureAmbient"] = round(
                 temp_util.convert(current_temp, unit, TEMP_CELSIUS), 1
@@ -1840,7 +1803,7 @@ class InputSelectorTrait(_Trait):
 
 @register_trait
 class OpenCloseTrait(_Trait):
-    """Trait to open and close a cover.
+    """Trait to open and close a cover, or to report open/closed sensor.
 
     https://developers.google.com/actions/smarthome/traits/openclose
     """
